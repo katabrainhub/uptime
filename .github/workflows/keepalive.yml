@@ -1,0 +1,52 @@
+name: Keepalive
+
+# This workflow exists for one reason, and it is not a health check.
+#
+# GitHub disables scheduled workflows in a repository after 60 days without
+# repository activity. In an actively developed repository that never happens.
+# This repository holds nothing but cron jobs, so without deliberate activity it
+# receives no commits, and the hourly health ping would be silently disabled
+# after two months — no failure, no notification, just an external monitor that
+# quietly stopped existing.
+#
+# That is a worse failure than the one the ping is watching for, because a dead
+# service is loud and a dead monitor is not.
+#
+# So: one commit a week, purely to reset that clock. Four commits a month of
+# noise, in exchange for the ping surviving indefinitely.
+#
+# If this workflow is ever removed, put a calendar reminder in its place.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays 05:00 UTC, before the working week.
+    - cron: '0 5 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  touch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record a heartbeat and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          date -u '+%Y-%m-%dT%H:%M:%SZ scheduled-workflow keepalive' > LAST-RUN.txt
+          git config user.name  'katabrain keepalive'
+          git config user.email 'actions@github.com'
+          git add LAST-RUN.txt
+          # --allow-empty would defeat the purpose: an empty commit is still
+          # activity, but a changed file makes it obvious in the log what this is.
+          git commit -m "chore: keepalive $(date -u '+%Y-%m-%d')"
+          git push
